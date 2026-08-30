@@ -7,6 +7,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev,sparse,serve]"
       - run: ruff check .
       - run: pytest -q
+      # Eval gate: builds the corpus (heuristic tokenizer — no HF Hub
+      # dependency, matching the offline/CI path documented in the README)
+      # and scores BM25 retrieval + lexical-overlap faithfulness against the
+      # hand-labelled gold sets. Both need no model download and no network
+      # beyond the sparse checkout below, so this runs on every PR; the
+      # embedding/reranker/NLI/LLM-judge arms are not gated here — see
+      # scripts/eval_gate.py's docstring for why.
+      - run: python scripts/build_corpus.py --strategy structural --target-tokens 512 --tokenizer heuristic
+      - run: python scripts/eval_gate.py

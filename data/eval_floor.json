@@ -1,0 +1,5 @@
+{
+  "_comment": "Regression floors for scripts/eval_gate.py. Both gates use only components that need no network and no HF/Groq access — BM25 (SudachiPy's dictionary ships in the wheel) and lexical-overlap faithfulness — so they run in CI on every PR. Floors are set with headroom below the real measured values from phases 3 and 4 (BM25 recall@5=0.896 on gold_v1.jsonl; lexical-overlap accuracy=0.646 on faithfulness_v1.jsonl) so the gate catches a real regression without being flaky on noise.",
+  "bm25_recall_at_5": 0.80,
+  "lexical_faithfulness_accuracy": 0.55
+}
