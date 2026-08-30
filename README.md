@@ -19,6 +19,8 @@ declined outright.
 > README: the problem, the architecture, the key decisions, and exactly
 > which numbers are real versus plumbing-only.
 
+![Kenshō architecture: retrieve, generate, decompose, verify, correct, trace](docs/architecture.svg)
+
 ---
 
 ## Why Japanese–English
@@ -394,6 +396,7 @@ WRITEUP.md            narrative case study: problem, architecture, decisions,
 Dockerfile / docker-compose.yml / docker/entrypoint.sh
                       one-command reproducible run, demo mode by default
 deploy/hf-space/      Hugging Face Space config + step-by-step deploy guide
+docs/architecture.svg pipeline diagram (embedded above)
 src/kensho/
   schema.py          Document and Chunk; parallel_id carries JA/EN identity
   tokenizer.py       pluggable token counting, script-aware fallback

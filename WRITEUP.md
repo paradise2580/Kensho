@@ -43,6 +43,8 @@ ablations (below) a real comparison instead of a foregone one.
 
 ## Architecture, in one pass
 
+![Kenshō architecture: retrieve, generate, decompose, verify, correct, trace](docs/architecture.svg)
+
 ```
 question --> retrieve (dense / BM25 / hybrid RRF) --> generate (Groq LLM)
          --> decompose into claims --> verify each claim against its sources

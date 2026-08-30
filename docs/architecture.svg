@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 460" font-family="'Segoe UI', 'Noto Sans CJK JP', 'Noto Sans JP', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="arrow-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#b45309"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#b91c1c"/>
+    </marker>
+  </defs>
+
+  <!-- explicit light card background so this reads the same on any page theme -->
+  <rect x="0" y="0" width="1180" height="460" rx="12" fill="#ffffff" stroke="#e2e8f0"/>
+
+  <text x="30" y="34" font-size="20" font-weight="700" fill="#0f172a">Kenshō — retrieve → generate → verify → correct</text>
+
+  <!-- Question -->
+  <g>
+    <rect x="20" y="70" width="140" height="60" rx="8" fill="#eef2ff" stroke="#6366f1"/>
+    <text x="90" y="95" font-size="13" font-weight="600" fill="#1e1b4b" text-anchor="middle">Question</text>
+    <text x="90" y="113" font-size="11" fill="#4338ca" text-anchor="middle">EN / 日本語</text>
+  </g>
+
+  <!-- Retrieve -->
+  <g>
+    <rect x="205" y="60" width="180" height="80" rx="8" fill="#ecfeff" stroke="#0891b2"/>
+    <text x="295" y="82" font-size="13" font-weight="600" fill="#083344" text-anchor="middle">Retrieve</text>
+    <text x="295" y="99" font-size="10.5" fill="#155e75" text-anchor="middle">dense · BM25 · hybrid RRF</text>
+    <text x="295" y="114" font-size="10.5" fill="#155e75" text-anchor="middle">rerank · lang filter</text>
+    <text x="295" y="130" font-size="9.5" fill="#0e7490" text-anchor="middle">7 ablations, phase 3</text>
+  </g>
+
+  <!-- Generate -->
+  <g>
+    <rect x="425" y="70" width="150" height="60" rx="8" fill="#f0fdf4" stroke="#16a34a"/>
+    <text x="500" y="92" font-size="13" font-weight="600" fill="#052e16" text-anchor="middle">Generate</text>
+    <text x="500" y="109" font-size="10.5" fill="#166534" text-anchor="middle">Groq LLM / Echo</text>
+  </g>
+
+  <!-- Decompose -->
+  <g>
+    <rect x="615" y="70" width="150" height="60" rx="8" fill="#fefce8" stroke="#ca8a04"/>
+    <text x="690" y="92" font-size="13" font-weight="600" fill="#422006" text-anchor="middle">Decompose</text>
+    <text x="690" y="109" font-size="10.5" fill="#854d0e" text-anchor="middle">sentence / LLM claims</text>
+  </g>
+
+  <!-- Verify -->
+  <g>
+    <rect x="805" y="55" width="180" height="90" rx="8" fill="#fdf2f8" stroke="#db2777"/>
+    <text x="895" y="77" font-size="13" font-weight="600" fill="#500724" text-anchor="middle">Verify (検証)</text>
+    <text x="895" y="94" font-size="10" fill="#9d174d" text-anchor="middle">lexical · embedding</text>
+    <text x="895" y="108" font-size="10" fill="#9d174d" text-anchor="middle">NLI entailment · LLM-judge</text>
+    <text x="895" y="124" font-size="9.5" fill="#be185d" text-anchor="middle">per-claim verdict, phase 4</text>
+  </g>
+
+  <!-- Correct -->
+  <g>
+    <rect x="1020" y="60" width="140" height="80" rx="8" fill="#fff7ed" stroke="#c2410c"/>
+    <text x="1090" y="82" font-size="13" font-weight="600" fill="#431407" text-anchor="middle">Correct</text>
+    <text x="1090" y="98" font-size="9.5" fill="#7c2d12" text-anchor="middle">strike contradicted</text>
+    <text x="1090" y="112" font-size="9.5" fill="#7c2d12" text-anchor="middle">retry unsupported</text>
+    <text x="1090" y="126" font-size="9.5" fill="#7c2d12" text-anchor="middle">refuse below threshold</text>
+  </g>
+
+  <!-- main flow arrows -->
+  <path d="M160,100 H205" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <path d="M385,100 H425" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <path d="M575,100 H615" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <path d="M765,100 H805" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <path d="M985,100 H1020" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- retry loop: Correct -> back to Retrieve, claim-targeted -->
+  <path d="M1090,140 C1090,210 295,210 295,140" stroke="#b45309" stroke-width="2" fill="none"
+        stroke-dasharray="6 4" marker-end="url(#arrow-amber)"/>
+  <text x="692" y="200" font-size="11" fill="#92400e" text-anchor="middle">unsupported claim → one claim-targeted re-retrieval retry (not the original question)</text>
+
+  <!-- refuse branch -->
+  <rect x="1005" y="235" width="170" height="55" rx="8" fill="#fef2f2" stroke="#b91c1c"/>
+  <text x="1090" y="257" font-size="12" font-weight="600" fill="#450a0a" text-anchor="middle">Refusal</text>
+  <text x="1090" y="273" font-size="9.5" fill="#7f1d1d" text-anchor="middle">below survival threshold →</text>
+  <text x="1090" y="284" font-size="9.5" fill="#7f1d1d" text-anchor="middle">language-matched decline</text>
+  <path d="M1090,140 V235" stroke="#b91c1c" stroke-width="2" fill="none" marker-end="url(#arrow-red)"/>
+
+  <!-- answer / output -->
+  <rect x="20" y="235" width="220" height="55" rx="8" fill="#f8fafc" stroke="#475569"/>
+  <text x="130" y="257" font-size="12" font-weight="600" fill="#0f172a" text-anchor="middle">Verified answer</text>
+  <text x="130" y="273" font-size="9.5" fill="#334155" text-anchor="middle">kept claims + sources + trace_id</text>
+  <path d="M1005,262 C650,262 400,262 240,262" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- trace bar -->
+  <rect x="20" y="330" width="1140" height="90" rx="8" fill="#f1f5f9" stroke="#94a3b8" stroke-dasharray="3 3"/>
+  <text x="590" y="352" font-size="12.5" font-weight="600" fill="#1e293b" text-anchor="middle">Trace — one JSON line per request</text>
+  <text x="590" y="372" font-size="10.5" fill="#334155" text-anchor="middle">retrieved chunks · raw generation · per-claim verdict + action · latency by stage</text>
+  <text x="590" y="390" font-size="10" fill="#475569" text-anchor="middle">served by FastAPI (GET /healthz, POST /ask); gated in CI on BM25 recall@5 + lexical-overlap faithfulness</text>
+  <text x="590" y="406" font-size="9" fill="#64748b" text-anchor="middle" font-style="italic">Every stage above also has a tested offline fake/echo backend — see WRITEUP.md for exactly which numbers are measured vs. plumbing-only.</text>
+</svg>
