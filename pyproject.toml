@@ -1,0 +1,30 @@
+[project]
+name = "kensho"
+version = "0.1.0"
+description = "Bilingual JA/EN enterprise-support RAG with claim-level citation verification"
+requires-python = ">=3.11"
+dependencies = ["pyyaml>=6.0", "qdrant-client>=1.9", "numpy>=1.26", "rank-bm25>=0.2"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+filterwarnings = ["ignore::RuntimeWarning"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "scripts", "tests"]
+# data/ holds the vendored Kubernetes clone; it is corpus input, not our code.
+extend-exclude = ["data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

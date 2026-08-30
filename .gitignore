@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.env
+data/k8s-website/
+data/chunks/
+data/qdrant/
+artifacts/
+eval_reports/
+data/traces/
