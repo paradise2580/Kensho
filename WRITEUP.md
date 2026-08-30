@@ -129,7 +129,7 @@ rather than filled in with placeholders. Running `pip install -e
 set, then re-running `scripts/ablate.py`, `scripts/compare_verifiers.py`,
 and `scripts/eval_refusal.py`, is what turns those into real results — the
 project is built so that run requires no code changes, only environment
-access.
+access. `RUNBOOK.md` is that exact command sequence, step by step.
 
 ## Scale
 

@@ -17,7 +17,9 @@ declined outright.
 > an eval-gated CI check) are built and tested end to end. See
 > [`WRITEUP.md`](WRITEUP.md) for the shorter narrative version of this
 > README: the problem, the architecture, the key decisions, and exactly
-> which numbers are real versus plumbing-only.
+> which numbers are real versus plumbing-only. [`RUNBOOK.md`](RUNBOOK.md)
+> is the exact command sequence to turn the plumbing-only numbers into
+> real ones on a machine with Hugging Face Hub and Groq access.
 
 ![Kenshō architecture: retrieve, generate, decompose, verify, correct, trace](docs/architecture.svg)
 
@@ -414,6 +416,8 @@ free tier.
 README.md            technical reference (this file)
 WRITEUP.md            narrative case study: problem, architecture, decisions,
                       real-vs-plumbing results, limitations
+RUNBOOK.md            exact commands to turn plumbing-only numbers into real
+                      ones on a machine with HF Hub + Groq access
 Dockerfile / docker-compose.yml / docker/entrypoint.sh
                       one-command reproducible run, demo mode by default
 deploy/hf-space/      Hugging Face Space config + step-by-step deploy guide
