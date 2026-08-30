@@ -13,6 +13,7 @@ service with fake/echo components and no external dependencies at all.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -30,7 +31,8 @@ def main() -> int:
          f"verifier={config.verifier_method}  index_dir={config.index_dir}  "
          f"allow_fallback={config.allow_fallback}")
     app = create_app(config)
-    uvicorn.run(app, host="0.0.0.0", port=8000)  # nosec - intended for container use
+    port = int(os.environ.get("PORT", "8000"))
+    uvicorn.run(app, host="0.0.0.0", port=port)  # nosec - intended for container use
     return 0
 
 

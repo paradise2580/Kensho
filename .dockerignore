@@ -1,0 +1,15 @@
+.git
+.github
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.venv
+data/k8s-website
+data/chunks
+data/qdrant
+data/traces
+eval_reports
+artifacts
+tests
+*.tar.gz

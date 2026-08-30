@@ -1,0 +1,26 @@
+# Fully offline by default:  docker compose up
+# For the real backends, put GROQ_API_KEY (and, if you have HF Hub access,
+# KENSHO_EMBEDDER=intfloat/multilingual-e5-large) in a .env file next to
+# this compose file — see .env.example — and set KENSHO_ALLOW_FALLBACK=false.
+services:
+  kensho:
+    build:
+      context: .
+      args:
+        # Add corpus,retrieval,generation,verify here once you have HF Hub
+        # / Groq access and want the real (non-fallback) backends.
+        EXTRAS: sparse,serve
+    ports:
+      - "8000:8000"
+    environment:
+      KENSHO_ALLOW_FALLBACK: "${KENSHO_ALLOW_FALLBACK:-true}"
+      GROQ_API_KEY: "${GROQ_API_KEY:-}"
+      KENSHO_EMBEDDER: "${KENSHO_EMBEDDER:-}"
+    volumes:
+      # Persist the built index and trace log across restarts.
+      - kensho-data:/app/data/qdrant
+      - kensho-traces:/app/data/traces
+
+volumes:
+  kensho-data:
+  kensho-traces:
