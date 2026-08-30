@@ -375,12 +375,25 @@ reranker, NLI, and LLM-judge arms are not gated this way, and extending CI
 to cover them would need a cached model and a Groq key configured as CI
 secrets, which is future work, not a limitation this gate pretends to solve.
 
+## Deployment
+
+`docker compose up` runs the full service locally in demo mode (fake
+embedder, echo LLM, zero external dependencies) — see the `Dockerfile` and
+`docker-compose.yml`. `deploy/hf-space/DEPLOY.md` covers pushing this same
+image to a Hugging Face Space, including why HF Spaces rather than
+Render/Railway (checked against actual free-tier specs, not assumed) and
+the two consequences that follow from its CPU-bound, non-persistent-disk
+free tier.
+
 ## Layout
 
 ```
 README.md            technical reference (this file)
 WRITEUP.md            narrative case study: problem, architecture, decisions,
                       real-vs-plumbing results, limitations
+Dockerfile / docker-compose.yml / docker/entrypoint.sh
+                      one-command reproducible run, demo mode by default
+deploy/hf-space/      Hugging Face Space config + step-by-step deploy guide
 src/kensho/
   schema.py          Document and Chunk; parallel_id carries JA/EN identity
   tokenizer.py       pluggable token counting, script-aware fallback
