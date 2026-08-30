@@ -18,6 +18,9 @@ generation = ["groq>=1.0"]
 # install and genuinely exercise in CI. Still optional because segment.py's
 # CharBigramSegmenter fallback means kensho works without it.
 sparse = ["sudachipy>=0.6", "sudachidict_core"]
+# NLIVerifier needs transformers (already listed under corpus) plus torch
+# for inference — torch isn't pulled in by anything else on its own.
+verify = ["transformers>=4.40", "torch>=2.0"]
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [build-system]
