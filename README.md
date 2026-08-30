@@ -204,6 +204,19 @@ trusted from memory. `scripts/validate_gold.py` checks the gold set's
 page references still exist in a given corpus build, since the upstream
 Kubernetes docs can rename or remove a page between re-pins.
 
+**`gold_v2.jsonl`** extends v1 to 62 items (31 EN / 31 JA) by adding five
+new topics — `taint-and-toleration`, `network-policies`,
+`service-accounts`, `disruptions`, `pod-security-standards` — following the
+same read-the-real-page-first discipline (`scripts/seed_gold_v2.py`, and
+`scripts/validate_gold.py data/gold/gold_v2.jsonl
+data/chunks/structural_t512_o64.jsonl` confirms all 62 resolve to real
+pages). `gold_v1.jsonl` is kept as-is rather than edited in place, because
+`eval_gate.py`'s CI floors are calibrated against it specifically — v2 is
+additional coverage, not a replacement. BM25 is real on v2 too, at the same
+scale as v1's result: **recall@1 = 0.690, recall@5 = 0.914, MRR = 0.782**
+(62 items, top-10) — consistent with v1's numbers, which is itself a useful
+check that v1's result wasn't a small-sample artifact.
+
 Phase 2 deliberately stops at retrieval metrics. Scoring whether a
 *generated* answer is faithful to its sources is what phase 4's NLI
 verification exists to do — wiring an LLM into this harness before that
@@ -299,6 +312,14 @@ empirically: this method has no path to ever output "contradicted" at all.
 `llm-judge` (no Groq key here) all need `--allow-fallback` in this sandbox,
 which makes those rows plumbing-only; a run on a machine with both HF and a
 Groq key is what turns the other three rows into a real comparison.
+
+**`faithfulness_v2.jsonl`** extends v1 to 66 items (51 EN / 15 JA) with the
+same five new topics added to `gold_v2.jsonl`, plus a Japanese variant for
+`taint-and-toleration` (`scripts/seed_faithfulness_v2.py`); v1 is again kept
+as the CI-pinned file. Lexical overlap scores **0.591 accuracy, 0.0 recall
+on contradicted claims** on v2 — the same structural blind spot as v1,
+holding at a larger and topically broader sample rather than being an
+artifact of the original 12 concepts.
 
 ## Self-correction and refusal (phase 5)
 
@@ -433,10 +454,13 @@ scripts/
   build_index.py     chunk JSONL -> Qdrant store
   ask.py             end-to-end CLI query
   seed_gold_v1.py    hand-authored gold set -> data/gold/gold_v1.jsonl
+  seed_gold_v2.py    v1 + 5 new topics -> data/gold/gold_v2.jsonl (v1 kept,
+                     CI floors are pinned to it)
   validate_gold.py   checks gold pages still exist in a given corpus build
   run_eval.py        gold set + index -> retrieval metrics + JSON report
   ablate.py          runs all seven ablations, prints a comparison table
   seed_faithfulness_v1.py   hand-authored claims -> faithfulness_v1.jsonl
+  seed_faithfulness_v2.py   v1 + 6 new topics -> faithfulness_v2.jsonl
   compare_verifiers.py      runs the 4-arm verification comparison
   correct_ask.py            full pipeline: ask -> verify -> correct
   eval_refusal.py           scores refusal decisions on the gold set's

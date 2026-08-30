@@ -105,11 +105,12 @@ project was built in:
 
 | component | needs | measured |
 |---|---|---|
-| BM25 sparse retrieval (SudachiPy segmentation) | nothing — dictionary ships in the wheel | recall@1 = 0.65, recall@5 = 0.90 (ablation gold set, top-5); recall@5 = 0.896 (CI gate, top-10 rescoring) |
-| Lexical-overlap faithfulness verification | nothing | 0.646 accuracy; 0.938 recall on unsupported claims; **0.0 recall on contradicted claims** |
+| BM25 sparse retrieval (SudachiPy segmentation) | nothing — dictionary ships in the wheel | v1 (52 items): recall@1 = 0.65, recall@5 = 0.90; recall@5 = 0.896 at top-10. v2 (62 items, 5 new topics): recall@1 = 0.69, recall@5 = 0.91, MRR = 0.78 — consistent with v1, not a small-sample artifact |
+| Lexical-overlap faithfulness verification | nothing | v1 (48 items): 0.646 accuracy; 0.938 recall on unsupported; **0.0 recall on contradicted**. v2 (66 items, 6 new topics): 0.591 accuracy; **0.0 recall on contradicted again** |
 
 That last number is not a bug — it's the predicted structural limit of the
-method, confirmed empirically: token-overlap scoring has no mechanism to
+method, confirmed empirically twice now, on two different item sets:
+token-overlap scoring has no mechanism to
 ever detect negation, so it cannot score "contradicted" no matter how
 obvious the contradiction is to a human. That gap is exactly what the NLI
 arm exists to close.
@@ -135,10 +136,12 @@ access.
 - 8,446 structural chunks / 5,413 fixed chunks over 406 English + 324
   Japanese pages (305 with a direct parallel counterpart).
 - 216 tests, ruff-clean, all passing offline.
-- Two hand-labelled gold sets built from primary sources: 52 retrieval items
-  (26 EN / 26 JA, 48 answerable + 4 deliberately not) and 48 faithfulness
-  items (36 EN / 12 JA) — every query, reference answer, and claim written
-  by reading the actual page text, not recalled from general knowledge.
+- Two hand-labelled gold sets built from primary sources, each since grown
+  to a v2: retrieval — v1 52 items (26 EN / 26 JA), v2 62 items (31 EN / 31
+  JA, 5 new topics) — and faithfulness — v1 48 items (36 EN / 12 JA), v2 66
+  items (51 EN / 15 JA, 6 new topics). Every query, reference answer, and
+  claim was written by reading the actual page text, not recalled from
+  general knowledge; v1 stays pinned for CI, v2 is additional coverage.
 - Seven retrieval ablations and a four-arm claim-verification comparison,
   each scored against the same fixed gold sets rather than seven separate
   one-off benchmarks.
