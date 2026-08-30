@@ -13,6 +13,11 @@ corpus = ["transformers>=4.40"]
 # unconditionally.
 retrieval = ["sentence-transformers>=3.0"]
 generation = ["groq>=1.0"]
+# sudachipy ships its own dictionary in the wheel, so — unlike everything
+# under `retrieval` above — it needs no network at run time and is safe to
+# install and genuinely exercise in CI. Still optional because segment.py's
+# CharBigramSegmenter fallback means kensho works without it.
+sparse = ["sudachipy>=0.6", "sudachidict_core"]
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [build-system]
