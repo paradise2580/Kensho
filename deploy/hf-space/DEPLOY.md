@@ -14,11 +14,24 @@ reranker plus an NLI model loaded at once); CPU is — the reranker and NLI
 verification stages can add real seconds of latency on 2 shared cores.
 Two things follow directly from that, both already reflected in the code:
 
-- **Non-persistent disk** means every cold start re-downloads any Hugging
-  Face model. `docker/entrypoint.sh` only rebuilds the corpus/index when
-  `data/qdrant` is empty, but the *model weights* themselves still
-  re-download on a fresh container — expect a slower first request after
-  every restart, not just every deploy.
+- **Non-persistent disk** means every cold start starts from the image
+  again. Measured, the demo build costs ~45s (≈10s to sparse-clone
+  kubernetes/website, ≈3s to chunk, ≈30s to index 8,446 vectors) — 45s of
+  a Space that is up but not answering, on every restart rather than every
+  deploy. So the Dockerfile now builds that demo index at *image-build*
+  time and the container starts serving immediately.
+
+  `docker/entrypoint.sh` therefore cannot decide whether to rebuild by
+  asking "does an index exist" — it always will. It compares the embedder
+  recorded in `data/qdrant/.kensho_embedder` against the embedder this
+  deployment is configured to serve with, and rebuilds when they disagree.
+  Without that check, setting `KENSHO_EMBEDDER` to a real model would
+  silently keep serving the prebuilt 64-dim fake vectors: a wrong answer
+  that looks like a working one.
+
+  Real *model weights* are still not in the image and still re-download on
+  a fresh container, so expect a slow first request whenever you run with
+  a real embedder, reranker, or NLI verifier.
 - **CPU-bound latency** is why the demo-mode default (`KENSHO_ALLOW_FALLBACK
   =true`) exists at all: it lets the Space come up and answer instantly with
   no model inference, so a visitor sees a working service immediately, with
