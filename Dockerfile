@@ -31,6 +31,27 @@ ENV KENSHO_INDEX_DIR=/app/data/qdrant \
     KENSHO_TRACE_PATH=/app/data/traces/kensho.jsonl \
     PORT=8000
 
+# Prebuild the offline demo corpus and index into the image.
+#
+# Doing this at container start instead costs ~45s of every cold boot (10s
+# to clone kubernetes/website, 3s to chunk, 30s to index 8,446 vectors),
+# during which the service is not answering. On a platform with
+# non-persistent disk — Hugging Face Spaces, which this is packaged for —
+# that is every restart, not just every deploy. Baking it in trades image
+# size for a container that serves its first request immediately.
+#
+# This index is deliberately the FAKE-embedder demo one: building the real
+# index here would need Hugging Face Hub access at image-build time and
+# would bake a ~35MB float32 index into the layer. entrypoint.sh's marker
+# check rebuilds it if the deployment actually asks for a real embedder.
+RUN KENSHO_ALLOW_FALLBACK=true python scripts/build_corpus.py \
+        --strategy structural --target-tokens 512 --tokenizer heuristic \
+ && KENSHO_ALLOW_FALLBACK=true python scripts/build_index.py \
+        data/chunks/structural_t512_o64.jsonl \
+        --embedder fake --allow-fallback --index-dir /app/data/qdrant \
+ && printf '%s' fake > /app/data/qdrant/.kensho_embedder \
+ && rm -rf data/k8s-website
+
 EXPOSE 8000
 
 ENTRYPOINT ["docker/entrypoint.sh"]
