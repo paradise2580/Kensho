@@ -10,3 +10,4 @@ data/qdrant/
 artifacts/
 eval_reports/
 data/traces/
+*.egg-info/
