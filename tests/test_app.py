@@ -113,3 +113,96 @@ class TestAsk:
         test_client, _config = client
         resp = test_client.post("/ask", json={})
         assert resp.status_code == 422
+
+
+@pytest.fixture
+def chunks_file(tmp_path):
+    """A small parallel EN/JA chunk file for BM25 to index at startup.
+
+    Deliberately six chunks across three topics rather than two: BM25 scores
+    on inverse document frequency, and in a two-document corpus every term
+    appears in nearly every document, so IDF collapses and all scores tie at
+    zero. A fixture that small would test the plumbing while telling us
+    nothing about whether ranking works.
+    """
+    import json
+    path = tmp_path / "chunks.jsonl"
+    chunks = [
+        make_chunk("A Pod can hold several containers that share a network namespace.",
+                   "docs/pods.md", "en", 0),
+        make_chunk("Podは同じネットワーク名前空間を共有する複数のコンテナを保持できます。",
+                   "docs/pods.md", "ja", 0),
+        make_chunk("A Service exposes an application running on a set of Pods.",
+                   "docs/services.md", "en", 0),
+        make_chunk("Serviceは一連のPod上で動作するアプリケーションを公開します。",
+                   "docs/services.md", "ja", 0),
+        make_chunk("A volume provides persistent storage that outlives a container restart.",
+                   "docs/volumes.md", "en", 0),
+        make_chunk("ボリュームはコンテナの再起動後も残る永続的なストレージを提供します。",
+                   "docs/volumes.md", "ja", 0),
+    ]
+    with path.open("w", encoding="utf-8") as f:
+        for c in chunks:
+            f.write(json.dumps(c.to_dict(), ensure_ascii=False) + "\n")
+    return path
+
+
+@pytest.fixture
+def sparse_client(chunks_file, tmp_path):
+    config = ServerConfig(
+        retriever="sparse", chunks_path=chunks_file,
+        embedder_model=None, llm_provider=None, verifier_method="lexical",
+        allow_fallback=True, trace_path=tmp_path / "sparse-traces.jsonl",
+    )
+    return TestClient(create_app(config)), config
+
+
+class TestSparseRetrieval:
+    """BM25 serving is the configuration a host with no model storage runs.
+
+    These assert the two things that make that deployment worth having: no
+    embedding model is loaded at all, and retrieval still returns real hits.
+    """
+
+    def test_healthz_reports_bm25_and_no_embedder(self, sparse_client):
+        test_client, _config = sparse_client
+        body = test_client.get("/healthz").json()
+        assert body["status"] == "ok"
+        assert body["retriever"].startswith("bm25:")
+        assert body["embedder"] == "none"
+        assert body["index_size"] == 6
+
+    def test_ask_retrieves_without_any_embedder(self, sparse_client):
+        test_client, _config = sparse_client
+        resp = test_client.post("/ask", json={"question": "Can a Pod hold several containers?"})
+        assert resp.status_code == 200
+        assert resp.json()["sources"], "BM25 returned no sources for a lexically obvious query"
+
+    def test_japanese_query_ranks_the_right_japanese_chunk_first(self, sparse_client):
+        """Segmentation is the whole game here.
+
+        Japanese has no word boundaries, so a whitespace tokenizer would see
+        this query as one enormous token matching nothing. Getting the right
+        document back is evidence the morphological segmenter actually ran.
+        """
+        test_client, _config = sparse_client
+        resp = test_client.post("/ask", json={"question": "ボリュームとは何ですか?"})
+        sources = resp.json()["sources"]
+        assert sources, "BM25 returned nothing for a Japanese query"
+        assert sources[0]["lang"] == "ja"
+        assert sources[0]["parallel_id"] == "docs/volumes.md"
+
+
+class TestRetrieverValidation:
+    def test_unknown_retriever_fails_loudly(self, tmp_path):
+        from kensho.serve.app import build_retriever
+        config = ServerConfig(retriever="magic")
+        with pytest.raises(ValueError, match="Unknown KENSHO_RETRIEVER"):
+            build_retriever(config, embedder=None)
+
+    def test_sparse_without_chunk_file_names_the_missing_path(self, tmp_path):
+        from kensho.serve.app import build_retriever
+        missing = tmp_path / "nope.jsonl"
+        config = ServerConfig(retriever="sparse", chunks_path=missing)
+        with pytest.raises(FileNotFoundError, match="nope.jsonl"):
+            build_retriever(config, embedder=None)

@@ -22,10 +22,33 @@ class ServerConfig:
     llm_provider: str | None = "groq"  # None -> EchoProvider
     verifier_method: str = "lexical"
     decomposer_mode: str = "sentence"
+    # "dense" (embeddings), "sparse" (BM25), or "hybrid" (RRF over both).
+    #
+    # Phase 3 measured all three; only dense was reachable at serving time,
+    # which meant any deployment without Hugging Face Hub access had to fall
+    # back to the fake embedder and serve nonsense. Sparse needs no model
+    # weights at all - SudachiPy ships its dictionary in the wheel - so
+    # exposing it here is what makes a genuinely grounded deployment
+    # possible on a host with no model storage and little RAM.
+    retriever: str = "dense"
+    # Sparse and hybrid retrieval index chunk text directly at startup
+    # rather than reading prebuilt vectors, so they need the chunk file.
+    chunks_path: Path = Path("data/chunks/structural_t512_o64.jsonl")
     top_k: int = 5
     refusal_threshold: float = 0.5
     allow_fallback: bool = False
     trace_path: Path = Path("data/traces/kensho.jsonl")
+
+    @property
+    def needs_embedder(self) -> bool:
+        """Whether this configuration actually loads an embedding model.
+
+        Sparse retrieval with a non-embedding verifier touches no embedder,
+        and constructing one anyway would download several hundred MB of
+        weights that nothing then uses - the difference between a container
+        that starts in seconds and one that does not fit in a free tier.
+        """
+        return self.retriever in ("dense", "hybrid") or self.verifier_method == "embedding"
 
     @classmethod
     def from_env(cls) -> ServerConfig:
@@ -39,6 +62,9 @@ class ServerConfig:
             llm_provider=_opt("KENSHO_LLM", "groq"),
             verifier_method=os.environ.get("KENSHO_VERIFIER", "lexical"),
             decomposer_mode=os.environ.get("KENSHO_DECOMPOSER", "sentence"),
+            retriever=os.environ.get("KENSHO_RETRIEVER", "dense"),
+            chunks_path=Path(os.environ.get(
+                "KENSHO_CHUNKS", "data/chunks/structural_t512_o64.jsonl")),
             top_k=int(os.environ.get("KENSHO_TOP_K", "5")),
             refusal_threshold=float(os.environ.get("KENSHO_REFUSAL_THRESHOLD", "0.5")),
             allow_fallback=os.environ.get("KENSHO_ALLOW_FALLBACK", "").lower() in

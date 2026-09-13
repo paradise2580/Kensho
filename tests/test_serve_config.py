@@ -46,3 +46,36 @@ class TestFromEnv:
             monkeypatch.delenv(var, raising=False)
         config = ServerConfig.from_env()
         assert config.verifier_method == "lexical"
+
+
+class TestRetrieverSelection:
+    def test_defaults_to_dense(self):
+        assert ServerConfig().retriever == "dense"
+
+    def test_reads_retriever_and_chunks_path(self, monkeypatch):
+        monkeypatch.setenv("KENSHO_RETRIEVER", "sparse")
+        monkeypatch.setenv("KENSHO_CHUNKS", "/tmp/chunks.jsonl")
+        config = ServerConfig.from_env()
+        assert config.retriever == "sparse"
+        assert config.chunks_path == Path("/tmp/chunks.jsonl")
+
+
+class TestNeedsEmbedder:
+    """The point of sparse serving is that no embedding model is loaded.
+
+    If this ever silently flips to True, a deployment sized for BM25 would
+    start downloading model weights at boot and fall over on a small host -
+    so it is asserted rather than assumed.
+    """
+
+    def test_sparse_with_lexical_verifier_needs_no_embedder(self):
+        assert ServerConfig(retriever="sparse", verifier_method="lexical").needs_embedder is False
+
+    def test_sparse_with_embedding_verifier_still_needs_one(self):
+        assert ServerConfig(retriever="sparse", verifier_method="embedding").needs_embedder is True
+
+    def test_dense_needs_one(self):
+        assert ServerConfig(retriever="dense").needs_embedder is True
+
+    def test_hybrid_needs_one(self):
+        assert ServerConfig(retriever="hybrid").needs_embedder is True

@@ -23,8 +23,33 @@ KENSHO_ALLOW_FALLBACK="${KENSHO_ALLOW_FALLBACK:-true}"
 export KENSHO_ALLOW_FALLBACK
 
 INDEX_DIR="${KENSHO_INDEX_DIR:-data/qdrant}"
-CHUNKS_FILE="data/chunks/structural_t512_o64.jsonl"
+CHUNKS_FILE="${KENSHO_CHUNKS:-data/chunks/structural_t512_o64.jsonl}"
 MARKER="$INDEX_DIR/.kensho_embedder"
+
+# Sparse (BM25) retrieval indexes chunk text in memory at startup and never
+# touches the vector store, so none of the index logic below applies. It
+# also loads no embedding model, which is what lets this run with real
+# retrieval on a host too small for model weights.
+DEFAULT_CHUNKS="data/chunks/structural_t512_o64.jsonl"
+
+if [ "${KENSHO_RETRIEVER:-dense}" = "sparse" ]; then
+  if [ -f "$CHUNKS_FILE" ]; then
+    echo "[entrypoint] sparse retrieval: using existing $CHUNKS_FILE"
+  elif [ "$CHUNKS_FILE" = "$DEFAULT_CHUNKS" ]; then
+    echo "[entrypoint] sparse retrieval needs $CHUNKS_FILE — building the corpus"
+    python scripts/build_corpus.py --strategy structural --target-tokens 512 \
+      --tokenizer heuristic
+  else
+    # build_corpus.py writes to its own default path, so building here would
+    # produce a file somewhere other than where KENSHO_CHUNKS points and then
+    # fail at startup anyway — with 13s of misleading "building" output first.
+    echo "[entrypoint] KENSHO_CHUNKS=$CHUNKS_FILE does not exist, and building" >&2
+    echo "[entrypoint] would write to $DEFAULT_CHUNKS instead. Point KENSHO_CHUNKS" >&2
+    echo "[entrypoint] at a file that exists, or unset it to use the default." >&2
+    exit 1
+  fi
+  exec python scripts/serve.py
+fi
 
 # The embedder this process would serve with. Mirrors get_embedder()'s own
 # resolution order: an explicit KENSHO_EMBEDDER wins; otherwise fallback

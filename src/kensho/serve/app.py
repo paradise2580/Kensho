@@ -12,8 +12,10 @@ components and a throwaway trace file, with no real model and no network.
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -22,7 +24,10 @@ from ..correct.policy import CorrectionConfig, correct_answer
 from ..embed import Embedder, get_embedder
 from ..llm import LLMProvider, get_llm
 from ..pipeline import ask as run_ask
-from ..store import ChunkStore
+from ..retrieval.hybrid import HybridRetriever
+from ..retrieval.sparse import BM25Store
+from ..schema import Chunk
+from ..store import ChunkStore, Retriever
 from ..verify.claims import Decomposer, get_decomposer
 from ..verify.nli import ClaimVerifier, get_verifier
 from ..verify.pipeline import verify_answer
@@ -33,17 +38,59 @@ from .trace import ClaimTrace, RetrievedChunk, Timer, Trace, TraceWriter, new_tr
 @dataclass(slots=True)
 class PipelineState:
     config: ServerConfig
-    embedder: Embedder
-    store: ChunkStore
+    embedder: Embedder | None
+    store: Retriever
     llm: LLMProvider
     decomposer: Decomposer
     verifier: ClaimVerifier
     trace_writer: TraceWriter
 
 
+def _load_chunks(path: Path) -> list[Chunk]:
+    with path.open(encoding="utf-8") as f:
+        return [Chunk(**json.loads(line)) for line in f if line.strip()]
+
+
+def _build_sparse(config: ServerConfig) -> BM25Store:
+    """A BM25 retriever, indexed in memory at startup.
+
+    Indexing 8,446 chunks takes a few seconds and needs no model weights,
+    no vector store on disk, and no network - which is the whole point of
+    offering it here.
+    """
+    if not config.chunks_path.exists():
+        raise FileNotFoundError(
+            f"Sparse retrieval needs the chunk file at {config.chunks_path}, which "
+            f"does not exist. Build it with scripts/build_corpus.py, or point "
+            f"KENSHO_CHUNKS at an existing one."
+        )
+    bm25 = BM25Store(allow_fallback=config.allow_fallback)
+    bm25.index(_load_chunks(config.chunks_path))
+    return bm25
+
+
+def build_retriever(config: ServerConfig, embedder: Embedder | None) -> Retriever:
+    if config.retriever == "sparse":
+        return _build_sparse(config)
+    if config.retriever == "dense":
+        assert embedder is not None  # guaranteed by ServerConfig.needs_embedder
+        return ChunkStore(embedder, path=config.index_dir)
+    if config.retriever == "hybrid":
+        assert embedder is not None
+        return HybridRetriever(dense=ChunkStore(embedder, path=config.index_dir),
+                               sparse=_build_sparse(config))
+    raise ValueError(
+        f"Unknown KENSHO_RETRIEVER={config.retriever!r}; expected one of "
+        f"'dense', 'sparse', 'hybrid'."
+    )
+
+
 def build_pipeline_state(config: ServerConfig) -> PipelineState:
-    embedder = get_embedder(config.embedder_model, allow_fallback=config.allow_fallback)
-    store = ChunkStore(embedder, path=config.index_dir)
+    # Built only when something will actually use it - see
+    # ServerConfig.needs_embedder for why that matters on a small host.
+    embedder = (get_embedder(config.embedder_model, allow_fallback=config.allow_fallback)
+                if config.needs_embedder else None)
+    store = build_retriever(config, embedder)
     llm = get_llm(config.llm_provider, allow_fallback=config.allow_fallback)
     decomposer = get_decomposer(config.decomposer_mode, llm=llm)
     verifier = get_verifier(config.verifier_method, llm=llm, embedder=embedder,
@@ -85,6 +132,7 @@ class AskResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     index_size: int
+    retriever: str
     embedder: str
     llm: str
     verifier: str
@@ -102,8 +150,13 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
 
     @app.get("/healthz", response_model=HealthResponse)
     def healthz() -> HealthResponse:
+        # HybridRetriever fuses two retrievers and has no count of its own.
+        counter = getattr(state.store, "count", None)
         return HealthResponse(
-            status="ok", index_size=state.store.count(), embedder=state.embedder.name,
+            status="ok",
+            index_size=counter() if counter else -1,
+            retriever=state.store.name,
+            embedder=state.embedder.name if state.embedder else "none",
             llm=state.llm.name, verifier=state.verifier.name,
         )
 
@@ -137,7 +190,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
             ],
             answer_text=answer.text,
             llm_name=answer.llm_name,
-            embedder_name=state.embedder.name,
+            embedder_name=state.embedder.name if state.embedder else "none",
             verifier_name=state.verifier.name,
             claims=[
                 ClaimTrace(text=d.verified.claim.text, label=d.final_result.label,
