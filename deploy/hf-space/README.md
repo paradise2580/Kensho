@@ -1,6 +1,6 @@
 ---
 title: Kenshō
-emoji: 検
+emoji: 🔍
 colorFrom: indigo
 colorTo: blue
 sdk: docker
