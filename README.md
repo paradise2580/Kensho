@@ -9,17 +9,42 @@ stage: the generated answer is decomposed into atomic claims, each claim is
 checked against its retrieved sources with a multilingual entailment model, and
 claims that nothing supports are struck, re-retrieved, or the answer is
 declined outright.
+> **Status: complete — all seven phases built and tested end to end.**
+> Corpus, chunking, dense retrieval, grounded generation, a hand-labelled
+> evaluation harness, seven retrieval ablations, claim-level verification,
+> self-correction, and serving: a FastAPI service with per-request tracing
+> and an eval-gated CI check.
 
-> **Status: phase 7 complete — all seven phases built.** Corpus, chunking,
-> dense retrieval, single-shot generation, a hand-labelled evaluation
-> harness, seven retrieval ablations, claim-level verification,
-> self-correction, and serving (a FastAPI service, per-request tracing, and
-> an eval-gated CI check) are built and tested end to end. See
-> [`WRITEUP.md`](WRITEUP.md) for the shorter narrative version of this
-> README: the problem, the architecture, the key decisions, and exactly
-> which numbers are real versus plumbing-only. [`RUNBOOK.md`](RUNBOOK.md)
-> is the exact command sequence to turn the plumbing-only numbers into
-> real ones on a machine with Hugging Face Hub and Groq access.
+## Results
+
+Retrieval, scored against hand-labelled bilingual gold sets where every query
+and reference answer was written by reading the actual EN/JA source page — not
+recalled from general Kubernetes knowledge. These are real runs, not estimates:
+
+| | `gold_v1` (52 items) | `gold_v2` (62 items) |
+|---|---:|---:|
+| recall@1 | 0.65 | 0.690 |
+| recall@5 | 0.90 | 0.914 |
+| MRR | — | 0.782 |
+
+Both rows are BM25 sparse retrieval with SudachiPy morphological segmentation,
+which is what this project's build environment could execute end to end with no
+network access. v2's agreement with v1 across five added topics is itself the
+check that v1 wasn't a small-sample artifact. A CI job gates every push on
+`recall@5 ≥ 0.896` against v1, so a regression fails the build rather than
+landing quietly.
+
+Seven retrieval configurations are implemented and ablated behind one
+`Retriever` protocol — dense, sparse, hybrid (RRF), cross-encoder reranking,
+two embedders, two chunking strategies, and a cross-lingual restriction — along
+with four claim-verification methods compared head to head. The configurations
+requiring Hugging Face Hub or Groq access are built and tested but marked
+explicitly in the tables where they appear, rather than reported as if they had
+been run; [`RUNBOOK.md`](RUNBOOK.md) is the exact command sequence to produce
+them on a machine with that access.
+
+[`WRITEUP.md`](WRITEUP.md) is the narrative version: the problem, the
+architecture, and the decisions behind them.
 
 ![Kenshō architecture: retrieve, generate, decompose, verify, correct, trace](docs/architecture.svg)
 
