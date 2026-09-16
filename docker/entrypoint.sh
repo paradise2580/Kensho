@@ -26,10 +26,14 @@ INDEX_DIR="${KENSHO_INDEX_DIR:-data/qdrant}"
 CHUNKS_FILE="${KENSHO_CHUNKS:-data/chunks/structural_t512_o64.jsonl}"
 MARKER="$INDEX_DIR/.kensho_embedder"
 
-# Sparse (BM25) retrieval indexes chunk text in memory at startup and never
-# touches the vector store, so none of the index logic below applies. It
-# also loads no embedding model, which is what lets this run with real
-# retrieval on a host too small for model weights.
+# Sparse (BM25) retrieval loads no embedding model, which is what lets this
+# run with real retrieval on a host too small for model weights. It has two
+# backends (KENSHO_SPARSE_BACKEND): "memory" indexes chunk text in RAM at
+# every startup and never touches disk; "fts5" persists a SQLite index and
+# only rebuilds it when the chunk file has changed — see
+# src/kensho/retrieval/fts5.py for why. Both are handled inside
+# create_app() itself (build_retriever() -> _build_sparse()), so this
+# script's job is only making sure the chunk file exists first.
 DEFAULT_CHUNKS="data/chunks/structural_t512_o64.jsonl"
 
 if [ "${KENSHO_RETRIEVER:-dense}" = "sparse" ]; then
@@ -48,6 +52,14 @@ if [ "${KENSHO_RETRIEVER:-dense}" = "sparse" ]; then
     echo "[entrypoint] at a file that exists, or unset it to use the default." >&2
     exit 1
   fi
+
+  if [ "${KENSHO_SPARSE_BACKEND:-memory}" = "fts5" ]; then
+    SPARSE_INDEX="${KENSHO_SPARSE_INDEX:-data/index/bm25.db}"
+    echo "[entrypoint] fts5 sparse backend: ensuring $SPARSE_INDEX is current" \
+         "for $CHUNKS_FILE"
+    python scripts/build_sparse_index.py "$CHUNKS_FILE" --db-path "$SPARSE_INDEX"
+  fi
+
   exec python scripts/serve.py
 fi
 

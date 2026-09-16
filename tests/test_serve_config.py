@@ -60,6 +60,28 @@ class TestRetrieverSelection:
         assert config.chunks_path == Path("/tmp/chunks.jsonl")
 
 
+class TestSparseBackendSelection:
+    def test_defaults_to_memory(self):
+        # The path every existing test and the eval-gate CI floor were
+        # measured against — fts5 is opt-in until a parity run says
+        # otherwise (see retrieval/fts5.py and RUNBOOK.md).
+        assert ServerConfig().sparse_backend == "memory"
+
+    def test_defaults_index_path(self):
+        assert ServerConfig().sparse_index_path == Path("data/index/bm25.db")
+
+    def test_reads_sparse_backend_and_index_path(self, monkeypatch):
+        monkeypatch.setenv("KENSHO_SPARSE_BACKEND", "fts5")
+        monkeypatch.setenv("KENSHO_SPARSE_INDEX", "/tmp/some-index.db")
+        config = ServerConfig.from_env()
+        assert config.sparse_backend == "fts5"
+        assert config.sparse_index_path == Path("/tmp/some-index.db")
+
+    def test_unset_sparse_backend_falls_back_to_memory(self, monkeypatch):
+        monkeypatch.delenv("KENSHO_SPARSE_BACKEND", raising=False)
+        assert ServerConfig.from_env().sparse_backend == "memory"
+
+
 class TestNeedsEmbedder:
     """The point of sparse serving is that no embedding model is loaded.
 

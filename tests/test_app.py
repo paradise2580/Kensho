@@ -193,6 +193,59 @@ class TestSparseRetrieval:
         assert sources[0]["parallel_id"] == "docs/volumes.md"
 
 
+@pytest.fixture
+def fts5_sparse_client(chunks_file, tmp_path):
+    config = ServerConfig(
+        retriever="sparse", chunks_path=chunks_file,
+        sparse_backend="fts5", sparse_index_path=tmp_path / "bm25.db",
+        embedder_model=None, llm_provider=None, verifier_method="lexical",
+        allow_fallback=True, trace_path=tmp_path / "fts5-traces.jsonl",
+    )
+    return TestClient(create_app(config)), config
+
+
+class TestFTS5SparseRetrieval:
+    """The same claims TestSparseRetrieval makes about the in-memory
+    backend, made about the disk-backed one — a different backend behind
+    the same KENSHO_RETRIEVER=sparse flag should look identical from the
+    API's side of the fence, which is the point of the Retriever protocol."""
+
+    def test_healthz_reports_fts5_and_no_embedder(self, fts5_sparse_client):
+        test_client, _config = fts5_sparse_client
+        body = test_client.get("/healthz").json()
+        assert body["status"] == "ok"
+        assert body["retriever"].startswith("fts5:")
+        assert body["embedder"] == "none"
+        assert body["index_size"] == 6
+
+    def test_ask_retrieves_without_any_embedder(self, fts5_sparse_client):
+        test_client, _config = fts5_sparse_client
+        resp = test_client.post("/ask", json={"question": "Can a Pod hold several containers?"})
+        assert resp.status_code == 200
+        assert resp.json()["sources"], "FTS5 returned no sources for a lexically obvious query"
+
+    def test_japanese_query_ranks_the_right_japanese_chunk_first(self, fts5_sparse_client):
+        test_client, _config = fts5_sparse_client
+        resp = test_client.post("/ask", json={"question": "ボリュームとは何ですか?"})
+        sources = resp.json()["sources"]
+        assert sources, "FTS5 returned nothing for a Japanese query"
+        assert sources[0]["lang"] == "ja"
+        assert sources[0]["parallel_id"] == "docs/volumes.md"
+
+    def test_index_persists_across_a_second_app_built_from_the_same_config(
+        self, fts5_sparse_client,
+    ):
+        """The whole point of this backend: a second process (here, a
+        second create_app() against the same sparse_index_path) reuses the
+        on-disk index instead of rebuilding it."""
+        _test_client, config = fts5_sparse_client
+        assert config.sparse_index_path.exists()
+
+        second_client = TestClient(create_app(config))
+        resp = second_client.post("/ask", json={"question": "ボリュームとは何ですか?"})
+        assert resp.json()["sources"][0]["parallel_id"] == "docs/volumes.md"
+
+
 class TestRetrieverValidation:
     def test_unknown_retriever_fails_loudly(self, tmp_path):
         from kensho.serve.app import build_retriever
@@ -206,3 +259,67 @@ class TestRetrieverValidation:
         config = ServerConfig(retriever="sparse", chunks_path=missing)
         with pytest.raises(FileNotFoundError, match="nope.jsonl"):
             build_retriever(config, embedder=None)
+
+    def test_unknown_sparse_backend_fails_loudly(self, chunks_file):
+        from kensho.serve.app import build_retriever
+        config = ServerConfig(retriever="sparse", chunks_path=chunks_file,
+                              sparse_backend="magic")
+        with pytest.raises(ValueError, match="Unknown KENSHO_SPARSE_BACKEND"):
+            build_retriever(config, embedder=None)
+
+
+class TestConsole:
+    """The static console at "/".
+
+    It is a file on disk rather than a template, so the two things worth
+    asserting are that the path resolution actually points at it and that a
+    missing file degrades to a clear 404 instead of a 500 - the API has to
+    keep working for non-browser clients whether or not the UI shipped.
+    """
+
+    def test_serves_the_console_html(self, client):
+        test_client, _ = client
+        resp = test_client.get("/")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "Kenshō" in resp.text
+
+    def test_console_html_is_not_cached(self, client):
+        # The bundles are content-hashed and immutable, but the HTML naming
+        # them must revalidate: a cached index.html points at bundle hashes
+        # that no longer exist, which presents to the user as a blank page
+        # after every rebuild.
+        test_client, _ = client
+        assert "no-cache" in test_client.get("/").headers.get("cache-control", "")
+
+    def test_console_html_references_a_built_bundle(self, client):
+        test_client, _ = client
+        body = test_client.get("/").text
+        assert "/assets/" in body, "the console HTML should name its built bundle"
+
+    def test_the_bundle_calls_the_real_endpoints(self):
+        # The console must talk to this API over HTTP. If the built bundle ever
+        # stopped referencing these routes, the UI would have become a mock
+        # rather than a client of the service - which is the one thing this
+        # project cannot afford its own demo to be.
+        import kensho.serve.app as app_module
+        bundles = list((app_module.WEB_DIST / "assets").glob("*.js"))
+        assert bundles, "web/dist/assets holds no JS; run `cd web && npm run build`"
+        source = "\n".join(b.read_text(encoding="utf-8") for b in bundles)
+        assert "/healthz" in source
+        assert "/ask" in source
+
+    def test_assets_are_served(self, client):
+        import kensho.serve.app as app_module
+        test_client, _ = client
+        bundle = next((app_module.WEB_DIST / "assets").glob("*.js"))
+        resp = test_client.get(f"/assets/{bundle.name}")
+        assert resp.status_code == 200
+
+    def test_missing_console_is_a_404_not_a_crash(self, client, monkeypatch, tmp_path):
+        import kensho.serve.app as app_module
+        monkeypatch.setattr(app_module, "WEB_INDEX", tmp_path / "absent.html")
+        test_client, _ = client
+        resp = test_client.get("/")
+        assert resp.status_code == 404
+        assert "healthz" in resp.json()["detail"]

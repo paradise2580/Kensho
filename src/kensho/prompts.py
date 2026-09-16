@@ -9,6 +9,16 @@ mixing languages, because both are places a general-purpose chat model
 defaults to the wrong behaviour: it would rather guess than say "the
 documents don't cover this," and it will happily answer a Japanese question
 in English if not told to match the query's language.
+
+The output-shape instruction is not cosmetic. Verification happens per
+claim, and claims come from splitting the answer on sentence boundaries -
+so an answer written as a markdown table or a bulleted list collapses into
+one enormous "claim" covering a dozen separate assertions, which can then
+only be judged as a single unit. A verdict on that is worthless: it cannot
+say which of the twelve facts was wrong, and one false cell condemns the
+whole answer while one true cell can carry the rest. Prose sentences are
+what make claim-level verification mean anything, so the prompt asks for
+them explicitly rather than hoping for them.
 """
 
 from __future__ import annotations
@@ -19,7 +29,12 @@ SYSTEM_PREAMBLE = (
     "You are an enterprise support assistant. Answer only using the numbered "
     "sources below. If the sources do not contain the answer, say so plainly "
     "instead of guessing. Answer in the same language as the question. Cite "
-    "sources inline as [1], [2], etc., matching the numbers given."
+    "sources inline as [1], [2], etc., matching the numbers given.\n\n"
+    "Write the answer as plain prose: complete sentences, separated by "
+    "sentence-ending punctuation. Do not use markdown tables, bullet lists, "
+    "numbered lists, or headings. State each fact as its own short sentence "
+    "rather than combining several facts into one long sentence. Keep the "
+    "whole answer under roughly six sentences."
 )
 
 

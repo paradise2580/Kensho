@@ -107,6 +107,45 @@ doesn't use any of the components above — so this step isn't necessary to
 python scripts/eval_gate.py
 ```
 
+## 8. Compare the two sparse-retrieval backends
+
+Both need no network and no model weights this sandbox lacks — this is the
+one comparison in this file runnable anywhere, including CI:
+
+```bash
+python scripts/compare_sparse_backends.py
+```
+
+Runs `BM25Store` (in-memory, ~390MB resident) and `FTS5Store` (disk-backed,
+the `KENSHO_SPARSE_BACKEND=fts5` option) against both gold sets and prints
+recall@{1,3,5,10} and MRR side by side. As of the exact-formula scorer in
+`retrieval/fts5.py` (computing Okapi BM25 with this project's own k1/b/
+epsilon rather than SQLite's built-in `bm25()`, which is hardcoded to a
+different k1), the two backends measure identically:
+
+```
+data/gold/gold_v1.jsonl  (n=48 answerable / 52 total)
+  metric           memory       fts5      delta
+  recall@1          0.646      0.646     +0.000
+  recall@3          0.854      0.854     +0.000
+  recall@5          0.896      0.896     +0.000
+  recall@10         0.917      0.917     +0.000
+  MRR               0.753      0.753     +0.000
+  top-1 hit differs on 0/52 items
+
+data/gold/gold_v2.jsonl  (n=58 answerable / 62 total)
+  metric           memory       fts5      delta
+  recall@1          0.690      0.690     +0.000
+  ...                                    +0.000
+  top-1 hit differs on 0/62 items
+```
+
+If this ever shows a nonzero delta again — after a corpus rebuild, a
+segmenter change, anything — that's a signal the two scoring paths have
+drifted, not an expected source of noise; `tests/test_fts5.py`'s
+`test_matches_rank_bm25_okapi_exactly` is the unit-level version of the
+same claim and should be the first thing to fail.
+
 ## What to update once you have these numbers
 
 - README.md's "Retrieval ablations (phase 3)" and "Claim verification

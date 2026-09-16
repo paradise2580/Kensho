@@ -28,6 +28,7 @@ RUN pip install --no-cache-dir -e ".[${EXTRAS}]"
 RUN chmod +x docker/entrypoint.sh
 
 ENV KENSHO_INDEX_DIR=/app/data/qdrant \
+    KENSHO_SPARSE_INDEX=/app/data/index/bm25.db \
     KENSHO_TRACE_PATH=/app/data/traces/kensho.jsonl \
     PORT=8000
 
@@ -44,12 +45,20 @@ ENV KENSHO_INDEX_DIR=/app/data/qdrant \
 # index here would need Hugging Face Hub access at image-build time and
 # would bake a ~35MB float32 index into the layer. entrypoint.sh's marker
 # check rebuilds it if the deployment actually asks for a real embedder.
+# Also bakes the FTS5 sparse index (~30MB) so `-e KENSHO_RETRIEVER=sparse
+# -e KENSHO_SPARSE_BACKEND=fts5` starts serving immediately too, on the
+# same "don't make a non-persistent-disk host pay a build on every
+# restart" logic as the dense index above - see
+# src/kensho/retrieval/fts5.py for why this backend exists at all (the
+# in-memory sparse backend needs no prebuild step, RAM is the trade there).
 RUN KENSHO_ALLOW_FALLBACK=true python scripts/build_corpus.py \
         --strategy structural --target-tokens 512 --tokenizer heuristic \
  && KENSHO_ALLOW_FALLBACK=true python scripts/build_index.py \
         data/chunks/structural_t512_o64.jsonl \
         --embedder fake --allow-fallback --index-dir /app/data/qdrant \
  && printf '%s' fake > /app/data/qdrant/.kensho_embedder \
+ && python scripts/build_sparse_index.py \
+        data/chunks/structural_t512_o64.jsonl --db-path /app/data/index/bm25.db \
  && rm -rf data/k8s-website
 
 EXPOSE 8000

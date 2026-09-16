@@ -34,6 +34,25 @@ class ServerConfig:
     # Sparse and hybrid retrieval index chunk text directly at startup
     # rather than reading prebuilt vectors, so they need the chunk file.
     chunks_path: Path = Path("data/chunks/structural_t512_o64.jsonl")
+    # Which BM25 implementation "sparse"/"hybrid" retrieval uses.
+    #
+    #   "memory" - rank_bm25.BM25Okapi, everything in RSS. Measured at
+    #              ~390MB resident for the full corpus - fine with RAM to
+    #              spare, the whole index reloaded from scratch every boot.
+    #   "fts5"   - SQLite FTS5 on disk (see retrieval/fts5.py). Measured at
+    #              under 10MB of Python-side state; the OS page-caches
+    #              whatever the index actually touches instead of the
+    #              process holding all of it live. Persisted to
+    #              sparse_index_path and reused across restarts unless the
+    #              chunk file changed.
+    #
+    # Default stays "memory" - the path every existing test and the
+    # eval-gate CI floor were measured against - until a parity run
+    # (recall@5/MRR, both backends, same gold set) says fts5 costs nothing
+    # worth caring about. Flip the default only after that comparison, not
+    # before it.
+    sparse_backend: str = "memory"
+    sparse_index_path: Path = Path("data/index/bm25.db")
     top_k: int = 5
     refusal_threshold: float = 0.5
     allow_fallback: bool = False
@@ -65,6 +84,9 @@ class ServerConfig:
             retriever=os.environ.get("KENSHO_RETRIEVER", "dense"),
             chunks_path=Path(os.environ.get(
                 "KENSHO_CHUNKS", "data/chunks/structural_t512_o64.jsonl")),
+            sparse_backend=os.environ.get("KENSHO_SPARSE_BACKEND", "memory"),
+            sparse_index_path=Path(os.environ.get(
+                "KENSHO_SPARSE_INDEX", "data/index/bm25.db")),
             top_k=int(os.environ.get("KENSHO_TOP_K", "5")),
             refusal_threshold=float(os.environ.get("KENSHO_REFUSAL_THRESHOLD", "0.5")),
             allow_fallback=os.environ.get("KENSHO_ALLOW_FALLBACK", "").lower() in

@@ -18,12 +18,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from ..correct.policy import CorrectionConfig, correct_answer
 from ..embed import Embedder, get_embedder
 from ..llm import LLMProvider, get_llm
 from ..pipeline import ask as run_ask
+from ..retrieval import fts5
 from ..retrieval.hybrid import HybridRetriever
 from ..retrieval.sparse import BM25Store
 from ..schema import Chunk
@@ -33,6 +36,17 @@ from ..verify.nli import ClaimVerifier, get_verifier
 from ..verify.pipeline import verify_answer
 from .config import ServerConfig
 from .trace import ClaimTrace, RetrievedChunk, Timer, Trace, TraceWriter, new_trace_id
+
+# src/kensho/serve/app.py -> repo root -> web/dist
+#
+# `web/dist` is the built React console, and it is committed to the repository
+# rather than gitignored. That is a deliberate trade: it means this service is
+# runnable, UI included, with Python alone - no Node, no npm install, no build
+# step - which is what makes `uvicorn kensho.serve.app:create_app --factory` a
+# complete instruction rather than step three of five. `cd web && npm run build`
+# regenerates it from `web/src`.
+WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
+WEB_INDEX = WEB_DIST / "index.html"
 
 
 @dataclass(slots=True)
@@ -51,18 +65,33 @@ def _load_chunks(path: Path) -> list[Chunk]:
         return [Chunk(**json.loads(line)) for line in f if line.strip()]
 
 
-def _build_sparse(config: ServerConfig) -> BM25Store:
-    """A BM25 retriever, indexed in memory at startup.
+def _build_sparse(config: ServerConfig) -> Retriever:
+    """A BM25 retriever, in the backend ``config.sparse_backend`` selects.
 
-    Indexing 8,446 chunks takes a few seconds and needs no model weights,
-    no vector store on disk, and no network - which is the whole point of
-    offering it here.
+    Both need no model weights and no network - the whole point of
+    offering sparse retrieval at all on a host with no room for one. They
+    differ in where the index lives: "memory" rebuilds
+    ``rank_bm25.BM25Okapi`` from the chunk file on every boot and keeps it
+    in RSS; "fts5" persists a SQLite FTS5 index to disk and reuses it
+    across restarts when the chunk file hasn't changed (see
+    ``retrieval/fts5.py`` for why a plain FTS5 tokenizer can't be used
+    directly on the Japanese half of the corpus).
     """
     if not config.chunks_path.exists():
         raise FileNotFoundError(
             f"Sparse retrieval needs the chunk file at {config.chunks_path}, which "
             f"does not exist. Build it with scripts/build_corpus.py, or point "
             f"KENSHO_CHUNKS at an existing one."
+        )
+    if config.sparse_backend == "fts5":
+        return fts5.build_or_load(
+            config.sparse_index_path, config.chunks_path,
+            allow_fallback=config.allow_fallback,
+        )
+    if config.sparse_backend != "memory":
+        raise ValueError(
+            f"Unknown KENSHO_SPARSE_BACKEND={config.sparse_backend!r}; "
+            f"expected 'memory' or 'fts5'."
         )
     bm25 = BM25Store(allow_fallback=config.allow_fallback)
     bm25.index(_load_chunks(config.chunks_path))
@@ -147,6 +176,37 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         description="Bilingual JA/EN enterprise-support RAG with claim-level "
                    "citation verification.",
     )
+
+    # The console's hashed JS/CSS bundles. Mounted only when the build exists,
+    # because StaticFiles raises at construction on a missing directory - and a
+    # missing UI must not stop the API from serving.
+    if WEB_DIST.is_dir():
+        app.mount(
+            "/assets",
+            StaticFiles(directory=WEB_DIST / "assets"),
+            name="assets",
+        )
+
+    # The single-page console at "/". It talks to this same API over HTTP, so
+    # the UI exercises the real endpoint rather than reaching into the pipeline
+    # in-process: a broken contract shows up in the browser exactly as it would
+    # for any other client.
+    #
+    # response_model=None: the return is a Response subclass, not a schema -
+    # FastAPI would otherwise try to build a Pydantic model from the union.
+    @app.get("/", include_in_schema=False, response_model=None)
+    def console() -> FileResponse | JSONResponse:
+        if not WEB_INDEX.exists():
+            return JSONResponse(
+                {"detail": f"Console not built at {WEB_INDEX}. Run `cd web && npm install "
+                           f"&& npm run build`. The API itself is unaffected; see "
+                           f"GET /healthz and POST /ask."},
+                status_code=404,
+            )
+        # The bundles are content-hashed and may be cached forever, but the HTML
+        # that names them must not be: a stale index.html points at bundles that
+        # no longer exist, which presents as a blank page after every deploy.
+        return FileResponse(WEB_INDEX, headers={"Cache-Control": "no-cache"})
 
     @app.get("/healthz", response_model=HealthResponse)
     def healthz() -> HealthResponse:

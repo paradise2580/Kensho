@@ -9,6 +9,7 @@ stage: the generated answer is decomposed into atomic claims, each claim is
 checked against its retrieved sources with a multilingual entailment model, and
 claims that nothing supports are struck, re-retrieved, or the answer is
 declined outright.
+
 > **Status: complete — all seven phases built and tested end to end.**
 > Corpus, chunking, dense retrieval, grounded generation, a hand-labelled
 > evaluation harness, seven retrieval ablations, claim-level verification,
@@ -45,6 +46,33 @@ them on a machine with that access.
 
 [`WRITEUP.md`](WRITEUP.md) is the narrative version: the problem, the
 architecture, and the decisions behind them.
+
+## The console
+
+`web/` is a React single-page console, served by the API itself at `/`. It
+talks to `POST /ask` and `GET /healthz` over HTTP like any other client, so a
+broken response contract surfaces in the browser exactly as it would for a
+caller, rather than being hidden by a UI that reaches into the pipeline
+in-process. It shows the retrieved passages and their scores, every claim with
+its verdict and the action taken on it (struck claims are struck through), the
+corrected answer or the refusal, and the per-stage latency from the request's
+trace. Two further tabs carry the measured evaluation and the architecture.
+
+**There is no fixture mode.** Nothing on the page is rendered from stored data:
+if the service is down the page says so, and if a request fails the page shows
+the error. Falling back to a canned trace would make the demo do exactly what
+the project exists to detect. The `dist/` build is committed for the same
+reason the rest of this repo pins its inputs — so the command below is the
+whole instruction, on a machine with Python and nothing else.
+
+```bash
+pip install -e ".[serve]"
+uvicorn kensho.serve.app:create_app --factory --reload
+# http://127.0.0.1:8000
+```
+
+[`web/README.md`](web/README.md) covers the component layout, the Vite dev
+server, and why the build artifact is in version control.
 
 ![Kenshō architecture: retrieve, generate, decompose, verify, correct, trace](docs/architecture.svg)
 
@@ -397,9 +425,57 @@ to run the whole service on fake/echo components with no external
 dependency at all.
 
 ```
-GET  /healthz   -> {status, index_size, embedder, llm, verifier}
+GET  /          -> the React console (see "The console" above)
+GET  /healthz   -> {status, index_size, retriever, embedder, llm, verifier}
 POST /ask       -> {trace_id, answer, refused, refusal_reason, claims, sources, latency_ms}
 ```
+
+**Sparse retrieval has two storage backends**, selected by
+`KENSHO_SPARSE_BACKEND` and independent of `KENSHO_RETRIEVER=sparse`
+itself:
+
+| | `memory` (default) | `fts5` |
+|---|---|---|
+| Index lives | Python objects in RSS (`rank_bm25.BM25Okapi`) | a SQLite file on disk (`KENSHO_SPARSE_INDEX`, default `data/index/bm25.db`, 41MB) |
+| Rebuilt | every process start | only when the chunk file changes (byte-size checked, not re-hashed) |
+| Measured RSS after index load, real service | 457.6MB | 215.0MB |
+| Measured RSS steady-state (40+ requests) | 506.0MB | 275.7MB |
+
+`fts5` exists because `memory`'s ~460–510MB, stacked with FastAPI/uvicorn
+and the rest of the process, doesn't fit a 512MB host. It's a different
+storage decision for the same lexical retrieval, not a different algorithm
+and — past the first attempt — not a different *ranking function* either:
+`src/kensho/retrieval/fts5.py` computes Okapi BM25 itself, with this
+project's own k1=1.5/b=0.75/epsilon=0.25, using FTS5 purely as a
+disk-backed inverted index for candidate generation. An earlier version
+scored with FTS5's own built-in `bm25()`, which is hardcoded to k1=1.2 with
+no public API to change it — a real, measured recall@5 regression
+(-0.034 to -0.042 across both gold sets, see `RUNBOOK.md`), root-caused
+to that one constant, not a tokenization or corpus difference (recall@10
+was identical between backends the whole time). The exact-formula rewrite
+closes it completely: **0.000 delta on recall@1/3/5/10 and MRR, both gold
+sets, 0/114 items disagree on their top hit** — verified against
+`rank_bm25.BM25Okapi` bit-for-bit on a controlled fixture, not just
+matched on ranking order.
+
+`fts5` saves ~230MB at steady state but does not by itself reach a
+150MB-class target, and it's worth being specific about why rather than
+rounding it away: `KENSHO_VERIFIER=lexical` (`verify/nli.py`'s
+`LexicalVerifier`) constructs its own independent SudachiPy segmenter,
+entirely separate from the retriever's — so with sparse retrieval *and*
+the lexical verifier both active, SudachiPy's dictionary loads twice,
+costing an extra ~60MB. This is not something the fts5 migration
+introduced; it's identical, and identically invisible, under `memory`
+retrieval, just swamped there by BM25's own ~390MB. Sharing one segmenter
+between the retriever and the verifier is a real, separate ~60MB
+opportunity this migration deliberately left alone, since it means
+touching the verification layer. `memory` stays the default for now — not
+because of any known quality gap (there is none, measured), but because
+`fts5` has had exactly one RSS-under-load pass so far, which is also how a
+real staleness-check bug (comparing chunk-file paths by exact string,
+so a relative and an absolute spelling of the same file looked like two
+different corpora and triggered a silent full rebuild on every boot) got
+caught and fixed rather than shipped.
 
 Every `/ask` call writes a `Trace` — the retrieved chunks, the raw
 generation, every claim's verdict and correction action, and a latency
@@ -497,7 +573,8 @@ scripts/
   serve.py                  runs the FastAPI app with uvicorn
   eval_gate.py              CI regression gate: BM25 recall@5 +
                             lexical-overlap faithfulness vs. eval_floor.json
-tests/               216 tests, several of them regressions (see below)
+web/                 React console (Vite); dist/ is committed — see web/README.md
+tests/               233 tests, several of them regressions (see below)
 ```
 
 ## Bugs worth knowing about

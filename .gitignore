@@ -7,7 +7,12 @@ __pycache__/
 data/k8s-website/
 data/chunks/
 data/qdrant/
+data/index/
 artifacts/
 eval_reports/
 data/traces/
 *.egg-info/
+
+# The console is a Vite app; its build output (web/dist) is committed on
+# purpose so the service runs with Python alone - see web/README.md.
+web/node_modules/
