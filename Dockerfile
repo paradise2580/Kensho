@@ -10,12 +10,12 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml ./
-COPY src ./src
-COPY scripts ./scripts
-COPY data/gold ./data/gold
-COPY data/eval_floor.json ./data/eval_floor.json
-COPY docker/entrypoint.sh ./docker/entrypoint.sh
+COPY backend/pyproject.toml ./
+COPY backend/src ./src
+COPY backend/scripts ./scripts
+COPY backend/data/gold ./data/gold
+COPY backend/data/eval_floor.json ./data/eval_floor.json
+COPY backend/docker/entrypoint.sh ./docker/entrypoint.sh
 
 # [dev] pulls in pytest/ruff too, which the image doesn't need at runtime,
 # but keeping install extras identical to CI's is one less thing to drift.
@@ -64,3 +64,4 @@ RUN KENSHO_ALLOW_FALLBACK=true python scripts/build_corpus.py \
 EXPOSE 8000
 
 ENTRYPOINT ["docker/entrypoint.sh"]
+

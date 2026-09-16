@@ -8,8 +8,11 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
       - run: pip install -e ".[dev,sparse,serve]"
+        working-directory: backend
       - run: ruff check .
+        working-directory: backend
       - run: pytest -q
+        working-directory: backend
       # Eval gate: builds the corpus (heuristic tokenizer — no HF Hub
       # dependency, matching the offline/CI path documented in the README)
       # and scores BM25 retrieval + lexical-overlap faithfulness against the
@@ -18,4 +21,7 @@ jobs:
       # embedding/reranker/NLI/LLM-judge arms are not gated here — see
       # scripts/eval_gate.py's docstring for why.
       - run: python scripts/build_corpus.py --strategy structural --target-tokens 512 --tokenizer heuristic
+        working-directory: backend
       - run: python scripts/eval_gate.py
+        working-directory: backend
+
